@@ -1,0 +1,24 @@
+# Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Large datasets (Keeps repository lightweight for Vercel deployment)
+*.csv
+
+# Vercel
+.vercel/
+
+# Logs & temp files
+*.log
+test_eval.py
+
+# OS generated files
+.DS_Store
+Thumbs.db

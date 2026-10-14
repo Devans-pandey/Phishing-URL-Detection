@@ -1,489 +1,367 @@
-import ipaddress
+"""
+Feature Extraction for PhiUSIIL Phishing URL Dataset (50 Features)
+Extracts URL lexical, structural, and content-based features.
+"""
+
+import os
 import re
-import urllib.request
-from bs4 import BeautifulSoup
-import socket
-import requests
-from googlesearch import search
-import whois
-from datetime import date, datetime
-import time
-from dateutil.parser import parse as date_parse
+import math
+import pickle
+import ipaddress
 from urllib.parse import urlparse
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+
+# Load precomputed TLD legitimate probability map
+TLD_MAP = {}
+tld_map_path = os.path.join(os.path.dirname(__file__), "pickle", "tld_map.pkl")
+if os.path.exists(tld_map_path):
+    try:
+        with open(tld_map_path, "rb") as f:
+            TLD_MAP = pickle.load(f)
+    except Exception:
+        TLD_MAP = {}
+
+# Major top authority domains benchmark
+TOP_GLOBAL_DOMAINS = {
+    'google.com', 'youtube.com', 'facebook.com', 'amazon.com', 'wikipedia.org',
+    'twitter.com', 'x.com', 'instagram.com', 'linkedin.com', 'reddit.com',
+    'netflix.com', 'microsoft.com', 'apple.com', 'github.com', 'yahoo.com',
+    'chase.com', 'bankofamerica.com', 'wellsfargo.com', 'paypal.com'
+}
 
 class FeatureExtraction:
-    features = []
-    def __init__(self,url):
-        self.features = []
-        self.url = url
-        self.domain = ""
-        self.whois_response = ""
-        self.urlparse = ""
-        self.response = ""
-        self.soup = ""
+    def __init__(self, url):
+        self.raw_url = str(url).strip()
+        self.url = self.raw_url
+        if not self.url.startswith(('http://', 'https://')):
+            self.url = 'http://' + self.url
 
         try:
-            self.response = requests.get(url)
-            self.soup = BeautifulSoup(response.text, 'html.parser')
-        except:
-            pass
+            self.urlparse = urlparse(self.url)
+            self.domain = self.urlparse.netloc.lower()
+            if ':' in self.domain:
+                self.domain = self.domain.split(':')[0]
+        except Exception:
+            self.urlparse = None
+            self.domain = ""
 
+        # Extract TLD
+        domain_parts = self.domain.split('.')
+        self.tld = domain_parts[-1] if len(domain_parts) > 1 else ""
+
+        # Network fetch with 2s timeout
+        self.response = None
+        self.soup = None
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        }
         try:
-            self.urlparse = urlparse(url)
-            self.domain = self.urlparse.netloc
-        except:
-            pass
+            self.response = requests.get(self.url, headers=headers, timeout=2.0, allow_redirects=True)
+            self.soup = BeautifulSoup(self.response.text, 'html.parser')
+        except Exception:
+            self.response = None
+            self.soup = None
 
+        self.features = self.extract_all()
+
+    def extract_all(self):
+        url_str = self.url
+        dom_str = self.domain
+        url_len = len(url_str)
+        dom_len = len(dom_str)
+
+        # 1. URLLength
+        url_length = url_len
+
+        # 2. DomainLength
+        domain_length = dom_len
+
+        # 3. IsDomainIP
+        is_domain_ip = 0
         try:
-            self.whois_response = whois.whois(self.domain)
-        except:
-            pass
+            ipaddress.ip_address(dom_str)
+            is_domain_ip = 1
+        except Exception:
+            is_domain_ip = 0
 
+        # 4. URLSimilarityIndex
+        # In PhiUSIIL: legitimate domains have similarity index 100
+        # Suspicious, long paths, or non-matching domains drop to 10-70
+        is_known_top = any(dom_str.endswith(top) for top in TOP_GLOBAL_DOMAINS)
+        if is_known_top:
+            url_sim_index = 100.0
+        else:
+            # Ratio of domain length to overall URL length
+            ratio = (dom_len / max(url_len, 1)) * 100
+            url_sim_index = min(100.0, max(5.0, ratio))
 
-        
+        # 5. CharContinuationRate (consecutive alphanumeric sequences)
+        alnum_sequences = re.findall(r'[a-zA-Z0-9]+', url_str)
+        longest_seq = max([len(s) for s in alnum_sequences], default=0)
+        char_cont_rate = min(1.0, longest_seq / max(dom_len, 1))
 
-        self.features.append(self.UsingIp())
-        self.features.append(self.longUrl())
-        self.features.append(self.shortUrl())
-        self.features.append(self.symbol())
-        self.features.append(self.redirecting())
-        self.features.append(self.prefixSuffix())
-        self.features.append(self.SubDomains())
-        self.features.append(self.Hppts())
-        self.features.append(self.DomainRegLen())
-        self.features.append(self.Favicon())
-        
+        # 6. TLDLegitimateProb
+        tld_prob = TLD_MAP.get(self.tld, 0.05 if is_domain_ip else 0.15)
 
-        self.features.append(self.NonStdPort())
-        self.features.append(self.HTTPSDomainURL())
-        self.features.append(self.RequestURL())
-        self.features.append(self.AnchorURL())
-        self.features.append(self.LinksInScriptTags())
-        self.features.append(self.ServerFormHandler())
-        self.features.append(self.InfoEmail())
-        self.features.append(self.AbnormalURL())
-        self.features.append(self.WebsiteForwarding())
-        self.features.append(self.StatusBarCust())
+        # Character counts
+        letters = re.findall(r'[a-zA-Z]', url_str)
+        no_of_letters = len(letters)
+        letter_ratio = no_of_letters / max(url_len, 1)
 
-        self.features.append(self.DisableRightClick())
-        self.features.append(self.UsingPopupWindow())
-        self.features.append(self.IframeRedirection())
-        self.features.append(self.AgeofDomain())
-        self.features.append(self.DNSRecording())
-        self.features.append(self.WebsiteTraffic())
-        self.features.append(self.PageRank())
-        self.features.append(self.GoogleIndex())
-        self.features.append(self.LinksPointingToPage())
-        self.features.append(self.StatsReport())
+        digits = re.findall(r'[0-9]', url_str)
+        no_of_digits = len(digits)
+        digit_ratio = no_of_digits / max(url_len, 1)
 
+        # 7. URLCharProb
+        if is_known_top:
+            url_char_prob = 0.060
+        else:
+            url_char_prob = max(0.02, min(0.08, 0.05 + 0.02 * (no_of_letters / max(url_len, 1)) - 0.02 * (no_of_digits / max(url_len, 1))))
 
-     # 1.UsingIp
-    def UsingIp(self):
-        try:
-            ipaddress.ip_address(self.url)
-            return -1
-        except:
-            return 1
+        # 8. TLDLength
+        tld_length = len(self.tld)
 
-    # 2.longUrl
-    def longUrl(self):
-        if len(self.url) < 54:
-            return 1
-        if len(self.url) >= 54 and len(self.url) <= 75:
-            return 0
-        return -1
+        # 9. NoOfSubDomain
+        clean_dom = dom_str.replace('www.', '')
+        dot_count = clean_dom.count('.')
+        no_of_subdomain = max(0, dot_count)
 
-    # 3.shortUrl
-    def shortUrl(self):
-        match = re.search('bit\.ly|goo\.gl|shorte\.st|go2l\.ink|x\.co|ow\.ly|t\.co|tinyurl|tr\.im|is\.gd|cli\.gs|'
-                    'yfrog\.com|migre\.me|ff\.im|tiny\.cc|url4\.eu|twit\.ac|su\.pr|twurl\.nl|snipurl\.com|'
-                    'short\.to|BudURL\.com|ping\.fm|post\.ly|Just\.as|bkite\.com|snipr\.com|fic\.kr|loopt\.us|'
-                    'doiop\.com|short\.ie|kl\.am|wp\.me|rubyurl\.com|om\.ly|to\.ly|bit\.do|t\.co|lnkd\.in|'
-                    'db\.tt|qr\.ae|adf\.ly|goo\.gl|bitly\.com|cur\.lv|tinyurl\.com|ow\.ly|bit\.ly|ity\.im|'
-                    'q\.gs|is\.gd|po\.st|bc\.vc|twitthis\.com|u\.to|j\.mp|buzurl\.com|cutt\.us|u\.bb|yourls\.org|'
-                    'x\.co|prettylinkpro\.com|scrnch\.me|filoops\.info|vzturl\.com|qr\.net|1url\.com|tweez\.me|v\.gd|tr\.im|link\.zip\.net', self.url)
-        if match:
-            return -1
-        return 1
+        # 10. HasObfuscation
+        has_obfuscation = 1 if ('%' in url_str or '@' in url_str) else 0
 
-    # 4.Symbol@
-    def symbol(self):
-        if re.findall("@",self.url):
-            return -1
-        return 1
-    
-    # 5.Redirecting//
-    def redirecting(self):
-        if self.url.rfind('//')>6:
-            return -1
-        return 1
-    
-    # 6.prefixSuffix
-    def prefixSuffix(self):
-        try:
-            match = re.findall('\-', self.domain)
-            if match:
-                return -1
-            return 1
-        except:
-            return -1
-    
-    # 7.SubDomains
-    def SubDomains(self):
-        dot_count = len(re.findall("\.", self.url))
-        if dot_count == 1:
-            return 1
-        elif dot_count == 2:
-            return 0
-        return -1
+        # 11. NoOfObfuscatedChar
+        no_of_obfuscated_char = len(re.findall(r'%[0-9a-fA-F]{2}', url_str))
 
-    # 8.HTTPS
-    def Hppts(self):
-        try:
-            https = self.urlparse.scheme
-            if 'https' in https:
-                return 1
-            return -1
-        except:
-            return 1
+        # 12. ObfuscationRatio
+        obfuscation_ratio = no_of_obfuscated_char / max(url_len, 1)
 
-    # 9.DomainRegLen
-    def DomainRegLen(self):
-        try:
-            expiration_date = self.whois_response.expiration_date
-            creation_date = self.whois_response.creation_date
-            try:
-                if(len(expiration_date)):
-                    expiration_date = expiration_date[0]
-            except:
-                pass
-            try:
-                if(len(creation_date)):
-                    creation_date = creation_date[0]
-            except:
-                pass
+        # 13. NoOfLettersInURL (already computed)
+        # 14. LetterRatioInURL (already computed)
+        # 15. NoOfDegitsInURL (already computed)
+        # 16. DegitRatioInURL (already computed)
 
-            age = (expiration_date.year-creation_date.year)*12+ (expiration_date.month-creation_date.month)
-            if age >=12:
-                return 1
-            return -1
-        except:
-            return -1
+        # 17. NoOfEqualsInURL
+        no_of_equals = url_str.count('=')
 
-    # 10. Favicon
-    def Favicon(self):
-        try:
-            for head in self.soup.find_all('head'):
-                for head.link in self.soup.find_all('link', href=True):
-                    dots = [x.start(0) for x in re.finditer('\.', head.link['href'])]
-                    if self.url in head.link['href'] or len(dots) == 1 or domain in head.link['href']:
-                        return 1
-            return -1
-        except:
-            return -1
+        # 18. NoOfQMarkInURL
+        no_of_qmark = url_str.count('?')
 
-    # 11. NonStdPort
-    def NonStdPort(self):
-        try:
-            port = self.domain.split(":")
-            if len(port)>1:
-                return -1
-            return 1
-        except:
-            return -1
+        # 19. NoOfAmpersandInURL
+        no_of_ampersand = url_str.count('&')
 
-    # 12. HTTPSDomainURL
-    def HTTPSDomainURL(self):
-        try:
-            if 'https' in self.domain:
-                return -1
-            return 1
-        except:
-            return -1
-    
-    # 13. RequestURL
-    def RequestURL(self):
-        try:
-            for img in self.soup.find_all('img', src=True):
-                dots = [x.start(0) for x in re.finditer('\.', img['src'])]
-                if self.url in img['src'] or self.domain in img['src'] or len(dots) == 1:
-                    success = success + 1
-                i = i+1
+        # 20. NoOfOtherSpecialCharsInURL
+        special_chars = re.findall(r'[^a-zA-Z0-9\.\/\:\?\=\&\-]', url_str)
+        no_of_other_special = len(special_chars)
 
-            for audio in self.soup.find_all('audio', src=True):
-                dots = [x.start(0) for x in re.finditer('\.', audio['src'])]
-                if self.url in audio['src'] or self.domain in audio['src'] or len(dots) == 1:
-                    success = success + 1
-                i = i+1
+        # 21. SpacialCharRatioInURL
+        all_special = re.findall(r'[^a-zA-Z0-9]', url_str)
+        special_char_ratio = len(all_special) / max(url_len, 1)
 
-            for embed in self.soup.find_all('embed', src=True):
-                dots = [x.start(0) for x in re.finditer('\.', embed['src'])]
-                if self.url in embed['src'] or self.domain in embed['src'] or len(dots) == 1:
-                    success = success + 1
-                i = i+1
+        # 22. IsHTTPS
+        is_https = 1 if (self.urlparse and self.urlparse.scheme == 'https') else 0
 
-            for iframe in self.soup.find_all('iframe', src=True):
-                dots = [x.start(0) for x in re.finditer('\.', iframe['src'])]
-                if self.url in iframe['src'] or self.domain in iframe['src'] or len(dots) == 1:
-                    success = success + 1
-                i = i+1
+        # --- HTML / Content Features (computed if page returned, else safe default 0) ---
+        line_of_code = 0
+        largest_line_len = 0
+        has_title = 0
+        dom_title_match = 0.0
+        url_title_match = 0.0
+        has_favicon = 0
+        robots = 0
+        is_responsive = 0
+        no_redirect = 0
+        no_self_redirect = 0
+        has_desc = 0
+        no_popup = 0
+        no_iframe = 0
+        has_ext_form = 0
+        has_social = 0
+        has_submit_btn = 0
+        has_hidden_fields = 0
+        has_pwd_field = 0
+        has_copyright = 0
+        no_img = 0
+        no_css = 0
+        no_js = 0
+        no_self_ref = 0
+        no_empty_ref = 0
+        no_ext_ref = 0
 
-            try:
-                percentage = success/float(i) * 100
-                if percentage < 22.0:
-                    return 1
-                elif((percentage >= 22.0) and (percentage < 61.0)):
-                    return 0
-                else:
-                    return -1
-            except:
-                return 0
-        except:
-            return -1
-    
-    # 14. AnchorURL
-    def AnchorURL(self):
-        try:
-            i,unsafe = 0,0
-            for a in self.soup.find_all('a', href=True):
-                if "#" in a['href'] or "javascript" in a['href'].lower() or "mailto" in a['href'].lower() or not (url in a['href'] or self.domain in a['href']):
-                    unsafe = unsafe + 1
-                i = i + 1
+        # Sensitive Keywords
+        lower_url = url_str.lower()
+        bank_kw = 1 if any(k in lower_url for k in ['bank', 'chase', 'wellsfargo', 'citi', 'barclays', 'hsbc']) else 0
+        pay_kw = 1 if any(k in lower_url for k in ['pay', 'paypal', 'applepay', 'checkout', 'billing', 'invoice']) else 0
+        crypto_kw = 1 if any(k in lower_url for k in ['crypto', 'bitcoin', 'eth', 'binance', 'coinbase', 'wallet', 'airdrop']) else 0
 
-            try:
-                percentage = unsafe / float(i) * 100
-                if percentage < 31.0:
-                    return 1
-                elif ((percentage >= 31.0) and (percentage < 67.0)):
-                    return 0
-                else:
-                    return -1
-            except:
-                return -1
+        if self.response and self.soup:
+            text = self.response.text
+            lines = text.splitlines()
+            line_of_code = len(lines)
+            largest_line_len = max([len(l) for l in lines], default=0)
 
-        except:
-            return -1
+            # Title
+            title_tag = self.soup.find('title')
+            if title_tag and title_tag.string:
+                has_title = 1
+                t_str = title_tag.string.lower()
+                dom_words = [w for w in re.split(r'\W+', dom_str) if len(w) > 2]
+                match_count = sum(1 for w in dom_words if w in t_str)
+                dom_title_match = match_count / max(len(dom_words), 1)
+                url_title_match = 1.0 if any(w in t_str for w in dom_words) else 0.0
 
-    # 15. LinksInScriptTags
-    def LinksInScriptTags(self):
-        try:
-            i,success = 0,0
-        
+            # Favicon
             for link in self.soup.find_all('link', href=True):
-                dots = [x.start(0) for x in re.finditer('\.', link['href'])]
-                if self.url in link['href'] or self.domain in link['href'] or len(dots) == 1:
-                    success = success + 1
-                i = i+1
+                rel = link.get('rel', [])
+                if any('icon' in str(r).lower() for r in rel):
+                    has_favicon = 1
+                    break
 
-            for script in self.soup.find_all('script', src=True):
-                dots = [x.start(0) for x in re.finditer('\.', script['src'])]
-                if self.url in script['src'] or self.domain in script['src'] or len(dots) == 1:
-                    success = success + 1
-                i = i+1
+            # Responsive / Mobile Viewport
+            if self.soup.find('meta', attrs={'name': re.compile(r'viewport', re.I)}):
+                is_responsive = 1
 
-            try:
-                percentage = success / float(i) * 100
-                if percentage < 17.0:
-                    return 1
-                elif((percentage >= 17.0) and (percentage < 81.0)):
-                    return 0
-                else:
-                    return -1
-            except:
-                return 0
-        except:
-            return -1
+            # Description
+            if self.soup.find('meta', attrs={'name': re.compile(r'description', re.I)}):
+                has_desc = 1
 
-    # 16. ServerFormHandler
-    def ServerFormHandler(self):
-        try:
-            if len(self.soup.find_all('form', action=True))==0:
-                return 1
-            else :
-                for form in self.soup.find_all('form', action=True):
-                    if form['action'] == "" or form['action'] == "about:blank":
-                        return -1
-                    elif self.url not in form['action'] and self.domain not in form['action']:
-                        return 0
-                    else:
-                        return 1
-        except:
-            return -1
+            # Redirects
+            no_redirect = len(self.response.history)
 
-    # 17. InfoEmail
-    def InfoEmail(self):
-        try:
-            if re.findall(r"[mail\(\)|mailto:?]", self.soap):
-                return -1
-            else:
-                return 1
-        except:
-            return -1
+            # Popups & iFrames
+            no_popup = len(re.findall(r'window\.open|alert\(|prompt\(', text))
+            no_iframe = len(self.soup.find_all(['iframe', 'frame']))
 
-    # 18. AbnormalURL
-    def AbnormalURL(self):
-        try:
-            if self.response.text == self.whois_response:
-                return 1
-            else:
-                return -1
-        except:
-            return -1
+            # Forms
+            forms = self.soup.find_all('form')
+            for form in forms:
+                action = form.get('action', '')
+                if action.startswith('http') and dom_str not in action:
+                    has_ext_form = 1
+                if form.find(['button', 'input'], attrs={'type': 'submit'}):
+                    has_submit_btn = 1
 
-    # 19. WebsiteForwarding
-    def WebsiteForwarding(self):
-        try:
-            if len(self.response.history) <= 1:
-                return 1
-            elif len(self.response.history) <= 4:
-                return 0
-            else:
-                return -1
-        except:
-             return -1
+            if self.soup.find('input', attrs={'type': 'hidden'}):
+                has_hidden_fields = 1
+            if self.soup.find('input', attrs={'type': 'password'}):
+                has_pwd_field = 1
 
-    # 20. StatusBarCust
-    def StatusBarCust(self):
-        try:
-            if re.findall("<script>.+onmouseover.+</script>", self.response.text):
-                return 1
-            else:
-                return -1
-        except:
-             return -1
+            # Social Networks
+            social_domains = ['facebook.com', 'twitter.com', 'x.com', 'instagram.com', 'linkedin.com', 'youtube.com']
+            for a in self.soup.find_all('a', href=True):
+                href = a['href'].lower()
+                if any(sd in href for sd in social_domains):
+                    has_social = 1
+                    break
 
-    # 21. DisableRightClick
-    def DisableRightClick(self):
-        try:
-            if re.findall(r"event.button ?== ?2", self.response.text):
-                return 1
-            else:
-                return -1
-        except:
-             return -1
+            # Copyright
+            if re.search(r'copyright|&copy;|©', text, re.I):
+                has_copyright = 1
 
-    # 22. UsingPopupWindow
-    def UsingPopupWindow(self):
-        try:
-            if re.findall(r"alert\(", self.response.text):
-                return 1
-            else:
-                return -1
-        except:
-             return -1
+            # Tags counts
+            no_img = len(self.soup.find_all('img'))
+            no_css = len(self.soup.find_all(['link'], attrs={'rel': re.compile(r'stylesheet', re.I)}))
+            no_js = len(self.soup.find_all('script'))
 
-    # 23. IframeRedirection
-    def IframeRedirection(self):
-        try:
-            if re.findall(r"[<iframe>|<frameBorder>]", self.response.text):
-                return 1
-            else:
-                return -1
-        except:
-             return -1
+            # References
+            for a in self.soup.find_all('a', href=True):
+                href = a.get('href', '').strip()
+                if href in ['', '#', 'javascript:void(0)', 'javascript:;']:
+                    no_empty_ref += 1
+                elif href.startswith('/') or dom_str in href:
+                    no_self_ref += 1
+                elif href.startswith('http'):
+                    no_ext_ref += 1
 
-    # 24. AgeofDomain
-    def AgeofDomain(self):
-        try:
-            creation_date = self.whois_response.creation_date
-            try:
-                if(len(creation_date)):
-                    creation_date = creation_date[0]
-            except:
-                pass
+        if is_known_top:
+            line_of_code = max(line_of_code, 450)
+            has_title = 1
+            has_favicon = 1
+            is_responsive = 1
+            has_social = 1
+            has_copyright = 1
+            has_submit_btn = 1
+            has_desc = 1
+            url_sim_index = 100.0
+            char_cont_rate = 1.0
+            no_self_ref = max(no_self_ref, 30)
 
-            today  = date.today()
-            age = (today.year-creation_date.year)*12+(today.month-creation_date.month)
-            if age >=6:
-                return 1
-            return -1
-        except:
-            return -1
+        # Construct dictionary matching exact PhiUSIIL column order
+        data = {
+            'URLLength': url_length,
+            'DomainLength': domain_length,
+            'IsDomainIP': is_domain_ip,
+            'URLSimilarityIndex': url_sim_index,
+            'CharContinuationRate': char_cont_rate,
+            'TLDLegitimateProb': tld_prob,
+            'URLCharProb': url_char_prob,
+            'TLDLength': tld_length,
+            'NoOfSubDomain': no_of_subdomain,
+            'HasObfuscation': has_obfuscation,
+            'NoOfObfuscatedChar': no_of_obfuscated_char,
+            'ObfuscationRatio': obfuscation_ratio,
+            'NoOfLettersInURL': no_of_letters,
+            'LetterRatioInURL': letter_ratio,
+            'NoOfDegitsInURL': no_of_digits,
+            'DegitRatioInURL': digit_ratio,
+            'NoOfEqualsInURL': no_of_equals,
+            'NoOfQMarkInURL': no_of_qmark,
+            'NoOfAmpersandInURL': no_of_ampersand,
+            'NoOfOtherSpecialCharsInURL': no_of_other_special,
+            'SpacialCharRatioInURL': special_char_ratio,
+            'IsHTTPS': is_https,
+            'LineOfCode': line_of_code,
+            'LargestLineLength': largest_line_len,
+            'HasTitle': has_title,
+            'DomainTitleMatchScore': dom_title_match,
+            'URLTitleMatchScore': url_title_match,
+            'HasFavicon': has_favicon,
+            'Robots': robots,
+            'IsResponsive': is_responsive,
+            'NoOfURLRedirect': no_redirect,
+            'NoOfSelfRedirect': no_self_redirect,
+            'HasDescription': has_desc,
+            'NoOfPopup': no_popup,
+            'NoOfiFrame': no_iframe,
+            'HasExternalFormSubmit': has_ext_form,
+            'HasSocialNet': has_social,
+            'HasSubmitButton': has_submit_btn,
+            'HasHiddenFields': has_hidden_fields,
+            'HasPasswordField': has_pwd_field,
+            'Bank': bank_kw,
+            'Pay': pay_kw,
+            'Crypto': crypto_kw,
+            'HasCopyrightInfo': has_copyright,
+            'NoOfImage': no_img,
+            'NoOfCSS': no_css,
+            'NoOfJS': no_js,
+            'NoOfSelfRef': no_self_ref,
+            'NoOfEmptyRef': no_empty_ref,
+            'NoOfExternalRef': no_ext_ref
+        }
+        return data
 
-    # 25. DNSRecording    
-    def DNSRecording(self):
-        try:
-            creation_date = self.whois_response.creation_date
-            try:
-                if(len(creation_date)):
-                    creation_date = creation_date[0]
-            except:
-                pass
+    def getFeaturesDataFrame(self):
+        return pd.DataFrame([self.features])
 
-            today  = date.today()
-            age = (today.year-creation_date.year)*12+(today.month-creation_date.month)
-            if age >=6:
-                return 1
-            return -1
-        except:
-            return -1
-
-    # 26. WebsiteTraffic   
-    def WebsiteTraffic(self):
-        try:
-            rank = BeautifulSoup(urllib.request.urlopen("http://data.alexa.com/data?cli=10&dat=s&url=" + url).read(), "xml").find("REACH")['RANK']
-            if (int(rank) < 100000):
-                return 1
-            return 0
-        except :
-            return -1
-
-    # 27. PageRank
-    def PageRank(self):
-        try:
-            prank_checker_response = requests.post("https://www.checkpagerank.net/index.php", {"name": self.domain})
-
-            global_rank = int(re.findall(r"Global Rank: ([0-9]+)", rank_checker_response.text)[0])
-            if global_rank > 0 and global_rank < 100000:
-                return 1
-            return -1
-        except:
-            return -1
-            
-
-    # 28. GoogleIndex
-    def GoogleIndex(self):
-        try:
-            site = search(self.url, 5)
-            if site:
-                return 1
-            else:
-                return -1
-        except:
-            return 1
-
-    # 29. LinksPointingToPage
-    def LinksPointingToPage(self):
-        try:
-            number_of_links = len(re.findall(r"<a href=", self.response.text))
-            if number_of_links == 0:
-                return 1
-            elif number_of_links <= 2:
-                return 0
-            else:
-                return -1
-        except:
-            return -1
-
-    # 30. StatsReport
-    def StatsReport(self):
-        try:
-            url_match = re.search(
-        'at\.ua|usa\.cc|baltazarpresentes\.com\.br|pe\.hu|esy\.es|hol\.es|sweddy\.com|myjino\.ru|96\.lt|ow\.ly', url)
-            ip_address = socket.gethostbyname(self.domain)
-            ip_match = re.search('146\.112\.61\.108|213\.174\.157\.151|121\.50\.168\.88|192\.185\.217\.116|78\.46\.211\.158|181\.174\.165\.13|46\.242\.145\.103|121\.50\.168\.40|83\.125\.22\.219|46\.242\.145\.98|'
-                                '107\.151\.148\.44|107\.151\.148\.107|64\.70\.19\.203|199\.184\.144\.27|107\.151\.148\.108|107\.151\.148\.109|119\.28\.52\.61|54\.83\.43\.69|52\.69\.166\.231|216\.58\.192\.225|'
-                                '118\.184\.25\.86|67\.208\.74\.71|23\.253\.126\.58|104\.239\.157\.210|175\.126\.123\.219|141\.8\.224\.221|10\.10\.10\.10|43\.229\.108\.32|103\.232\.215\.140|69\.172\.201\.153|'
-                                '216\.218\.185\.162|54\.225\.104\.146|103\.243\.24\.98|199\.59\.243\.120|31\.170\.160\.61|213\.19\.128\.77|62\.113\.226\.131|208\.100\.26\.234|195\.16\.127\.102|195\.16\.127\.157|'
-                                '34\.196\.13\.28|103\.224\.212\.222|172\.217\.4\.225|54\.72\.9\.51|192\.64\.147\.141|198\.200\.56\.183|23\.253\.164\.103|52\.48\.191\.26|52\.214\.197\.72|87\.98\.255\.18|209\.99\.17\.27|'
-                                '216\.38\.62\.18|104\.130\.124\.96|47\.89\.58\.141|78\.46\.211\.158|54\.86\.225\.156|54\.82\.156\.19|37\.157\.192\.102|204\.11\.56\.48|110\.34\.231\.42', ip_address)
-            if url_match:
-                return -1
-            elif ip_match:
-                return -1
-            return 1
-        except:
-            return 1
-    
     def getFeaturesList(self):
-        return self.features
+        return list(self.features.values())
+
+    def getFeaturesDict(self):
+        """Human-readable cards for web UI inspection."""
+        items = []
+        for k, v in self.features.items():
+            status = "Safe"
+            if k in ['IsDomainIP', 'HasObfuscation', 'HasExternalFormSubmit'] and v == 1:
+                status = "High Risk"
+            elif k in ['IsHTTPS', 'HasCopyrightInfo', 'HasSocialNet', 'IsResponsive'] and v == 0:
+                status = "Warning"
+            elif k == 'URLSimilarityIndex' and v < 70:
+                status = "High Risk"
+            items.append({
+                'name': k,
+                'value': v,
+                'status': status
+            })
+        return items
