@@ -14,52 +14,6 @@ from urllib.parse import urlparse
 
 warnings.filterwarnings('ignore')
 
-# ---------------------------------------------------------------------------
-# Trusted Domain Allowlist
-# Loaded from trusted_domains.txt at startup. Domains listed there (and all
-# their subdomains) always return Safe without running model inference.
-# To add a new domain: just edit trusted_domains.txt — no code change needed.
-# ---------------------------------------------------------------------------
-_TRUSTED_BASE_DOMAINS: set = set()
-
-def _load_trusted_domains():
-    """Load trusted domains from trusted_domains.txt, ignoring comments/blanks."""
-    path = os.path.join(os.path.dirname(__file__), "trusted_domains.txt")
-    domains = set()
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    # Normalise: strip leading www. so subdomain checks work cleanly
-                    domains.add(line.lstrip("www.").lower())
-        print(f"Loaded {len(domains)} trusted domains from trusted_domains.txt")
-    else:
-        print("Warning: trusted_domains.txt not found — no allowlist active")
-    return domains
-
-_TRUSTED_BASE_DOMAINS = _load_trusted_domains()
-
-def is_trusted_domain(url: str) -> bool:
-    """
-    Return True if the URL's hostname matches any trusted domain or is a
-    subdomain of one (e.g. 'api.phonepe.com' matches 'phonepe.com').
-    """
-    try:
-        host = (urlparse(url).hostname or "").lower().lstrip("www.")
-        if not host:
-            return False
-        # Exact match or subdomain match
-        if host in _TRUSTED_BASE_DOMAINS:
-            return True
-        # Check if host ends with .{trusted_domain}
-        for trusted in _TRUSTED_BASE_DOMAINS:
-            if host.endswith("." + trusted):
-                return True
-        return False
-    except Exception:
-        return False
-
 app = Flask(__name__)
 
 MODELS_DIR = os.path.join(os.path.dirname(__file__), "pickle")
@@ -86,34 +40,6 @@ def analyze_url(url_string, active_model_name="Ensemble (All Models)"):
     url_cleaned = url_string.strip()
     if not url_cleaned.startswith(('http://', 'https://')):
         url_cleaned = 'http://' + url_cleaned
-
-    # --- Trusted domain fast-path: skip model inference ---
-    if is_trusted_domain(url_cleaned):
-        obj = FeatureExtraction(url_cleaned)
-        feature_breakdown = []
-        for feat in obj.getFeaturesDict():
-            val = feat['value']
-            if isinstance(val, (np.floating, float)):
-                val = round(float(val), 4)
-            elif isinstance(val, (np.integer, int)):
-                val = int(val)
-            else:
-                val = str(val)
-            feature_breakdown.append({"name": feat['name'], "status": feat['status'], "score": val})
-        trusted_comparison = [
-            {"name": n, "is_safe": True, "verdict": "Safe",
-             "confidence": 99.9, "prob_safe": 99.9, "prob_phishing": 0.1,
-             "accuracy": item.get('accuracy', 100.0)}
-            for n, item in models_suite.items()
-        ]
-        return {
-            "url": url_cleaned, "is_safe": True, "confidence": 99.9,
-            "prob_safe": 99.9, "prob_phishing": 0.1,
-            "domain": obj.domain, "active_model": active_model_name,
-            "available_models": ["Ensemble (All Models)"] + list(models_suite.keys()),
-            "comparison": trusted_comparison, "features": feature_breakdown,
-            "trusted": True
-        }
 
     obj = FeatureExtraction(url_cleaned)
     features_df = obj.getFeaturesDataFrame()

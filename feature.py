@@ -23,12 +23,39 @@ if os.path.exists(tld_map_path):
     except Exception:
         TLD_MAP = {}
 
-# Major top authority domains benchmark
+# Major top authority domains — these get URLSimilarityIndex = 100
+# and CharContinuationRate = 1.0, preventing false positives on legit heavy SPAs
 TOP_GLOBAL_DOMAINS = {
+    # Global
     'google.com', 'youtube.com', 'facebook.com', 'amazon.com', 'wikipedia.org',
     'twitter.com', 'x.com', 'instagram.com', 'linkedin.com', 'reddit.com',
     'netflix.com', 'microsoft.com', 'apple.com', 'github.com', 'yahoo.com',
-    'chase.com', 'bankofamerica.com', 'wellsfargo.com', 'paypal.com'
+    'chase.com', 'bankofamerica.com', 'wellsfargo.com', 'paypal.com',
+    'gmail.com', 'outlook.com', 'office.com', 'dropbox.com', 'zoom.us',
+    'shopify.com', 'stripe.com', 'cloudflare.com', 'wordpress.com',
+    # Indian E-Commerce
+    'flipkart.com', 'myntra.com', 'meesho.com', 'snapdeal.com', 'ajio.com',
+    'nykaa.com', 'bigbasket.com', 'swiggy.com', 'zomato.com', 'jiomart.com',
+    'blinkit.com',
+    # Indian Fintech / Payments
+    'phonepe.com', 'paytm.com', 'razorpay.com', 'billdesk.com', 'ccavenue.com',
+    'instamojo.com', 'cashfree.com', 'juspay.in', 'payumoney.com',
+    'mobikwik.com', 'bharatpe.com', 'freecharge.in',
+    # Indian Banks
+    'sbi.co.in', 'onlinesbi.sbi', 'hdfcbank.com', 'icicibank.com',
+    'axisbank.com', 'kotak.com', 'yesbank.in', 'bankofbaroda.in',
+    'pnbindia.in', 'canarabank.in', 'indusind.com', 'idfcfirstbank.com',
+    'rblbank.com', 'federalbank.co.in',
+    # Indian Government / Regulatory
+    'npci.org.in', 'rbi.org.in', 'sebi.gov.in', 'incometax.gov.in',
+    'uidai.gov.in', 'irctc.co.in', 'digilocker.gov.in', 'epfindia.gov.in',
+    # Indian Investment
+    'zerodha.com', 'groww.in', 'upstox.com', 'angelone.in', '5paisa.com',
+    'nseindia.com', 'bseindia.com', 'moneycontrol.com',
+    # Indian Telecom
+    'jio.com', 'airtel.in', 'bsnl.co.in',
+    # Indian Streaming
+    'hotstar.com', 'jiocinema.com', 'sonyliv.com', 'zee5.com', 'mxplayer.in',
 }
 
 class FeatureExtraction:
@@ -343,8 +370,8 @@ class FeatureExtraction:
         return data
 
     def getFeaturesDataFrame(self):
-        """Return features as a 2D numpy array (row vector) — no pandas needed at runtime."""
-        return np.array([list(self.features.values())])
+        """Return features as a 2D numpy array (row vector) matching trained model expectations."""
+        return np.array([list(self.features.values())], dtype=float)
 
     def getFeaturesList(self):
         return list(self.features.values())
