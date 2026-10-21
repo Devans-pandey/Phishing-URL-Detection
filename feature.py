@@ -23,40 +23,7 @@ if os.path.exists(tld_map_path):
     except Exception:
         TLD_MAP = {}
 
-# Major top authority domains — these get URLSimilarityIndex = 100
-# and CharContinuationRate = 1.0, preventing false positives on legit heavy SPAs
-TOP_GLOBAL_DOMAINS = {
-    # Global
-    'google.com', 'youtube.com', 'facebook.com', 'amazon.com', 'wikipedia.org',
-    'twitter.com', 'x.com', 'instagram.com', 'linkedin.com', 'reddit.com',
-    'netflix.com', 'microsoft.com', 'apple.com', 'github.com', 'yahoo.com',
-    'chase.com', 'bankofamerica.com', 'wellsfargo.com', 'paypal.com',
-    'gmail.com', 'outlook.com', 'office.com', 'dropbox.com', 'zoom.us',
-    'shopify.com', 'stripe.com', 'cloudflare.com', 'wordpress.com',
-    # Indian E-Commerce
-    'flipkart.com', 'myntra.com', 'meesho.com', 'snapdeal.com', 'ajio.com',
-    'nykaa.com', 'bigbasket.com', 'swiggy.com', 'zomato.com', 'jiomart.com',
-    'blinkit.com',
-    # Indian Fintech / Payments
-    'phonepe.com', 'paytm.com', 'razorpay.com', 'billdesk.com', 'ccavenue.com',
-    'instamojo.com', 'cashfree.com', 'juspay.in', 'payumoney.com',
-    'mobikwik.com', 'bharatpe.com', 'freecharge.in',
-    # Indian Banks
-    'sbi.co.in', 'onlinesbi.sbi', 'hdfcbank.com', 'icicibank.com',
-    'axisbank.com', 'kotak.com', 'yesbank.in', 'bankofbaroda.in',
-    'pnbindia.in', 'canarabank.in', 'indusind.com', 'idfcfirstbank.com',
-    'rblbank.com', 'federalbank.co.in',
-    # Indian Government / Regulatory
-    'npci.org.in', 'rbi.org.in', 'sebi.gov.in', 'incometax.gov.in',
-    'uidai.gov.in', 'irctc.co.in', 'digilocker.gov.in', 'epfindia.gov.in',
-    # Indian Investment
-    'zerodha.com', 'groww.in', 'upstox.com', 'angelone.in', '5paisa.com',
-    'nseindia.com', 'bseindia.com', 'moneycontrol.com',
-    # Indian Telecom
-    'jio.com', 'airtel.in', 'bsnl.co.in',
-    # Indian Streaming
-    'hotstar.com', 'jiocinema.com', 'sonyliv.com', 'zee5.com', 'mxplayer.in',
-}
+
 
 class FeatureExtraction:
     def __init__(self, url):
@@ -113,21 +80,16 @@ class FeatureExtraction:
         except Exception:
             is_domain_ip = 0
 
-        # 4. URLSimilarityIndex
-        # In PhiUSIIL: legitimate domains have similarity index 100
-        # Suspicious, long paths, or non-matching domains drop to 10-70
-        is_known_top = any(dom_str.endswith(top) for top in TOP_GLOBAL_DOMAINS)
-        if is_known_top:
-            url_sim_index = 100.0
+        # 4. CharContinuationRate (consecutive alphanumeric continuity)
+        clean_dom = re.sub(r'^www\.', '', dom_str)
+        dom_parts = clean_dom.split('.')
+        main_label = dom_parts[0] if dom_parts else clean_dom
+        if re.match(r'^[a-zA-Z]+$', main_label):
+            char_cont_rate = 1.0
         else:
-            # Ratio of domain length to overall URL length
-            ratio = (dom_len / max(url_len, 1)) * 100
-            url_sim_index = min(100.0, max(5.0, ratio))
-
-        # 5. CharContinuationRate (consecutive alphanumeric sequences)
-        alnum_sequences = re.findall(r'[a-zA-Z0-9]+', url_str)
-        longest_seq = max([len(s) for s in alnum_sequences], default=0)
-        char_cont_rate = min(1.0, longest_seq / max(dom_len, 1))
+            alnum_sequences = re.findall(r'[a-zA-Z0-9]+', main_label)
+            longest_seq = max([len(s) for s in alnum_sequences], default=0)
+            char_cont_rate = min(1.0, longest_seq / max(len(main_label), 1))
 
         # 6. TLDLegitimateProb
         tld_prob = TLD_MAP.get(self.tld, 0.05 if is_domain_ip else 0.15)
@@ -141,11 +103,8 @@ class FeatureExtraction:
         no_of_digits = len(digits)
         digit_ratio = no_of_digits / max(url_len, 1)
 
-        # 7. URLCharProb
-        if is_known_top:
-            url_char_prob = 0.060
-        else:
-            url_char_prob = max(0.02, min(0.08, 0.05 + 0.02 * (no_of_letters / max(url_len, 1)) - 0.02 * (no_of_digits / max(url_len, 1))))
+        # 6. URLCharProb
+        url_char_prob = max(0.02, min(0.08, 0.05 + 0.02 * (no_of_letters / max(url_len, 1)) - 0.02 * (no_of_digits / max(url_len, 1))))
 
         # 8. TLDLength
         tld_length = len(self.tld)
@@ -225,7 +184,7 @@ class FeatureExtraction:
         if self.response and self.soup:
             text = self.response.text
             lines = text.splitlines()
-            line_of_code = len(lines)
+            line_of_code = max(len(lines), len(text) // 70)
             largest_line_len = max([len(l) for l in lines], default=0)
 
             # Title
@@ -301,25 +260,11 @@ class FeatureExtraction:
                 elif href.startswith('http'):
                     no_ext_ref += 1
 
-        if is_known_top:
-            line_of_code = max(line_of_code, 450)
-            has_title = 1
-            has_favicon = 1
-            is_responsive = 1
-            has_social = 1
-            has_copyright = 1
-            has_submit_btn = 1
-            has_desc = 1
-            url_sim_index = 100.0
-            char_cont_rate = 1.0
-            no_self_ref = max(no_self_ref, 30)
-
-        # Construct dictionary matching exact PhiUSIIL column order
+        # Construct dictionary matching exact 49 genuine features
         data = {
             'URLLength': url_length,
             'DomainLength': domain_length,
             'IsDomainIP': is_domain_ip,
-            'URLSimilarityIndex': url_sim_index,
             'CharContinuationRate': char_cont_rate,
             'TLDLegitimateProb': tld_prob,
             'URLCharProb': url_char_prob,
@@ -385,8 +330,7 @@ class FeatureExtraction:
                 status = "High Risk"
             elif k in ['IsHTTPS', 'HasCopyrightInfo', 'HasSocialNet', 'IsResponsive'] and v == 0:
                 status = "Warning"
-            elif k == 'URLSimilarityIndex' and v < 70:
-                status = "High Risk"
+
             items.append({
                 'name': k,
                 'value': v,

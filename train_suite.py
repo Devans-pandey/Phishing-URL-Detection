@@ -25,9 +25,10 @@ def train_suite():
     print(f"Loading {DATASET_PATH}...")
     df = pd.read_csv(DATASET_PATH, nrows=50000)
 
-    drop_cols = ['FILENAME', 'URL', 'Domain', 'TLD', 'Title', 'label']
+    drop_cols = ['FILENAME', 'URL', 'Domain', 'TLD', 'Title', 'label', 'URLSimilarityIndex']
     X = df.drop(columns=drop_cols)
     y = df['label']
+    print(f"Training on {X.shape[1]} genuine features (URLSimilarityIndex removed)...")
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
