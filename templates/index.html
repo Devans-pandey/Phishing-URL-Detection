@@ -22,7 +22,7 @@
             </div>
             <h1 class="app-title">Phishing URL Detection</h1>
             <p class="app-subtitle">
-                Real-time threat intelligence powered by HistGradientBoosting trained on 235,000+ benchmark URLs.
+                Real-time threat intelligence powered by 4 Machine Learning Classifiers: Logistic Regression, XGBoost, Decision Tree &amp; SVM.
             </p>
         </header>
 
@@ -151,8 +151,8 @@
                             <tr>
                                 <td style="font-weight: 600;">
                                     {{ m.name }}
-                                    {% if m.name == 'HistGradientBoosting' %}
-                                    <span style="font-size: 0.72rem; color: #60a5fa; margin-left: 0.35rem;">(Primary)</span>
+                                    {% if m.name == 'XGBoost' %}
+                                    <span style="font-size: 0.72rem; color: #60a5fa; margin-left: 0.35rem;">(Top Accuracy)</span>
                                     {% endif %}
                                 </td>
                                 <td style="font-family: 'JetBrains Mono', monospace; color: #93c5fd;">{{ m.accuracy }}%</td>
@@ -201,7 +201,7 @@
         <!-- Footer -->
         <footer class="app-footer">
             <p>
-                Phishing URL Detection System &bull; Powered by GradientBoostingClassifier & Scikit-Learn
+                Phishing URL Detection System &bull; Powered by Logistic Regression, XGBoost, Decision Tree &amp; SVM
             </p>
         </footer>
     </div>
