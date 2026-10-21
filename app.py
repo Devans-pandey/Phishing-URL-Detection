@@ -1,7 +1,6 @@
 """
 Phishing URL Detection - Modern Multi-Model Flask Web Application
-Active 4 Models: Logistic Regression, XGBoost, Decision Tree, SVM.
-Other suite models (e.g. HistGradientBoosting, Random Forest) remain preserved in the background.
+Active 6 Models: Logistic Regression, XGBoost, Decision Tree, SVM, HistGradientBoosting, Random Forest
 """
 
 import os
@@ -10,53 +9,8 @@ import warnings
 import numpy as np
 from flask import Flask, request, render_template, jsonify
 from feature import FeatureExtraction
-import re
 
 warnings.filterwarnings('ignore')
-
-# ---------------------------------------------------------------------------
-# Trusted domain allowlist — these are always returned as Safe without
-# running model inference, preventing false positives on well-known sites.
-# ---------------------------------------------------------------------------
-TRUSTED_DOMAINS = {
-    # Google services
-    "google.com", "www.google.com", "mail.google.com", "drive.google.com",
-    "docs.google.com", "accounts.google.com", "google.co.in",
-    # Microsoft
-    "microsoft.com", "www.microsoft.com", "login.microsoftonline.com",
-    "outlook.com", "office.com", "live.com", "hotmail.com",
-    # GitHub / GitLab
-    "github.com", "www.github.com", "gitlab.com", "www.gitlab.com",
-    # Social / media
-    "youtube.com", "www.youtube.com", "facebook.com", "www.facebook.com",
-    "twitter.com", "www.twitter.com", "x.com", "instagram.com",
-    "www.instagram.com", "linkedin.com", "www.linkedin.com",
-    "reddit.com", "www.reddit.com", "wikipedia.org", "www.wikipedia.org",
-    # E-commerce / cloud
-    "amazon.com", "www.amazon.com", "apple.com", "www.apple.com",
-    "icloud.com", "netflix.com", "www.netflix.com",
-    # Dev / infra
-    "stackoverflow.com", "npmjs.com", "pypi.org", "aws.amazon.com",
-    "vercel.com", "heroku.com", "cloudflare.com",
-}
-
-def _extract_domain(url: str) -> str:
-    """Return the bare hostname from a URL (strips port)."""
-    try:
-        from urllib.parse import urlparse
-        host = urlparse(url).hostname or ""
-        return host.lower().lstrip("www.")
-    except Exception:
-        return ""
-
-def is_trusted_domain(url: str) -> bool:
-    """Return True if the URL's hostname is in the trusted allowlist."""
-    try:
-        from urllib.parse import urlparse
-        host = (urlparse(url).hostname or "").lower()
-        return host in TRUSTED_DOMAINS or ("www." + host) in TRUSTED_DOMAINS
-    except Exception:
-        return False
 
 app = Flask(__name__)
 
@@ -64,20 +18,12 @@ MODELS_DIR = os.path.join(os.path.dirname(__file__), "pickle")
 SUITE_PATH = os.path.join(MODELS_DIR, "models_suite.pkl")
 SINGLE_MODEL_PATH = os.path.join(MODELS_DIR, "model.pkl")
 
-# Active 4 models exposed in UI and ensemble calculations
-ACTIVE_MODELS = [
-    "Logistic Regression",
-    "XGBoost",
-    "Decision Tree",
-    "SVM"
-]
-
 models_suite = {}
 try:
     if os.path.exists(SUITE_PATH):
         with open(SUITE_PATH, "rb") as f:
             models_suite = pickle.load(f)
-        print(f"Loaded {len(models_suite)} models in suite: {list(models_suite.keys())}")
+        print(f"Loaded {len(models_suite)} models in comparative suite: {list(models_suite.keys())}")
     elif os.path.exists(SINGLE_MODEL_PATH):
         with open(SINGLE_MODEL_PATH, "rb") as f:
             single = pickle.load(f)
@@ -85,28 +31,7 @@ try:
 except Exception as e:
     print(f"Warning: Could not load model suite: {e}")
 
-def get_visible_models(include_hidden=False):
-    """
-    Returns visible models.
-    By default, filters to only the 4 specified models:
-    Logistic Regression, XGBoost, Decision Tree, SVM.
-    Other models remain in models_suite but are hidden from the active display.
-    """
-    if include_hidden:
-        return models_suite
-
-    filtered = {}
-    for name in ACTIVE_MODELS:
-        if name in models_suite:
-            filtered[name] = models_suite[name]
-        else:
-            alt_key = name.replace(" ", "")
-            if alt_key in models_suite:
-                filtered[name] = models_suite[alt_key]
-
-    return filtered if filtered else models_suite
-
-def analyze_url(url_string, active_model_name=None, include_hidden=False):
+def analyze_url(url_string, active_model_name="Ensemble (All Models)"):
     if not url_string:
         return None
 
@@ -114,51 +39,15 @@ def analyze_url(url_string, active_model_name=None, include_hidden=False):
     if not url_cleaned.startswith(('http://', 'https://')):
         url_cleaned = 'http://' + url_cleaned
 
-    # --- Allowlist fast-path: skip model inference for trusted domains ---
-    if is_trusted_domain(url_cleaned):
-        visible_suite = get_visible_models(include_hidden=include_hidden)
-        default_ensemble_name = f"Ensemble ({len(visible_suite)} Models)"
-        active_model_name = active_model_name or default_ensemble_name
-        fake_comparison = [
-            {"name": n, "is_safe": True, "verdict": "Safe",
-             "confidence": 99.9, "prob_safe": 99.9, "prob_phishing": 0.1,
-             "accuracy": item.get('accuracy', 100.0)}
-            for n, item in visible_suite.items()
-        ]
-        obj = FeatureExtraction(url_cleaned)
-        feature_breakdown = []
-        for feat in obj.getFeaturesDict():
-            val = feat['value']
-            if isinstance(val, (float,)):
-                val = round(val, 4)
-            elif isinstance(val, int):
-                pass
-            else:
-                val = str(val)
-            feature_breakdown.append({"name": feat['name'], "status": feat['status'], "score": val})
-        available_model_names = [default_ensemble_name] + list(visible_suite.keys())
-        return {
-            "url": url_cleaned, "is_safe": True, "confidence": 99.9,
-            "prob_safe": 99.9, "prob_phishing": 0.1,
-            "domain": obj.domain, "active_model": active_model_name,
-            "available_models": available_model_names,
-            "comparison": fake_comparison, "features": feature_breakdown
-        }
-
     obj = FeatureExtraction(url_cleaned)
     features_df = obj.getFeaturesDataFrame()
-
-    visible_suite = get_visible_models(include_hidden=include_hidden)
-    default_ensemble_name = f"Ensemble ({len(visible_suite)} Models)"
-    if not active_model_name:
-        active_model_name = default_ensemble_name
 
     comparison_results = []
     safe_votes = 0
     total_votes = 0
 
-    # Evaluate across the active visible models
-    for name, item in visible_suite.items():
+    # Evaluate across all models in suite
+    for name, item in models_suite.items():
         m = item['model']
         acc = item.get('accuracy', 100.0)
         try:
@@ -190,8 +79,8 @@ def analyze_url(url_string, active_model_name=None, include_hidden=False):
             "accuracy": acc
         })
 
-    # Overall Consensus or Single Model Selection
-    if active_model_name in visible_suite:
+    # Overall Consensus
+    if active_model_name in models_suite:
         target_res = next((r for r in comparison_results if r['name'] == active_model_name), comparison_results[0])
         overall_safe = bool(target_res['is_safe'])
         overall_conf = float(target_res['confidence'])
@@ -199,17 +88,12 @@ def analyze_url(url_string, active_model_name=None, include_hidden=False):
         overall_prob_phish = float(target_res['prob_phishing'])
     else:
         overall_safe = bool(safe_votes >= (total_votes / 2.0))
-        if comparison_results:
-            if overall_safe:
-                overall_conf = float(round(float(np.mean([r['prob_safe'] for r in comparison_results])), 1))
-            else:
-                overall_conf = float(round(float(np.mean([r['prob_phishing'] for r in comparison_results])), 1))
-            overall_prob_safe = float(round(float(np.mean([r['prob_safe'] for r in comparison_results])), 1))
-            overall_prob_phish = float(round(float(np.mean([r['prob_phishing'] for r in comparison_results])), 1))
+        if overall_safe:
+            overall_conf = float(round(float(np.mean([r['prob_safe'] for r in comparison_results])), 1))
         else:
-            overall_conf = 50.0
-            overall_prob_safe = 50.0
-            overall_prob_phish = 50.0
+            overall_conf = float(round(float(np.mean([r['prob_phishing'] for r in comparison_results])), 1))
+        overall_prob_safe = float(round(float(np.mean([r['prob_safe'] for r in comparison_results])), 1))
+        overall_prob_phish = float(round(float(np.mean([r['prob_phishing'] for r in comparison_results])), 1))
 
     feature_breakdown = []
     for item in obj.getFeaturesDict():
@@ -226,8 +110,6 @@ def analyze_url(url_string, active_model_name=None, include_hidden=False):
             "score": clean_val
         })
 
-    available_model_names = [default_ensemble_name] + list(visible_suite.keys())
-
     return {
         "url": url_cleaned,
         "is_safe": overall_safe,
@@ -236,7 +118,7 @@ def analyze_url(url_string, active_model_name=None, include_hidden=False):
         "prob_phishing": overall_prob_phish,
         "domain": obj.domain,
         "active_model": active_model_name,
-        "available_models": available_model_names,
+        "available_models": ["Ensemble (All Models)"] + list(models_suite.keys()),
         "comparison": comparison_results,
         "features": feature_breakdown
     }
@@ -244,38 +126,23 @@ def analyze_url(url_string, active_model_name=None, include_hidden=False):
 @app.route("/", methods=["GET", "POST"])
 def index():
     result = None
-    show_all = request.args.get("show_all") == "1" or request.form.get("show_all") == "1"
-    visible_suite = get_visible_models(include_hidden=show_all)
-    default_ensemble_label = f"Ensemble ({len(visible_suite)} Models)"
-    available_models = [default_ensemble_label] + list(visible_suite.keys())
-
+    available_models = ["Ensemble (All Models)"] + list(models_suite.keys())
     if request.method == "POST":
         input_url = request.form.get("url", "").strip()
-        selected_model = request.form.get("model_choice", default_ensemble_label)
+        selected_model = request.form.get("model_choice", "Ensemble (All Models)")
         if input_url:
-            result = analyze_url(input_url, selected_model, include_hidden=show_all)
-
-    return render_template(
-        "index.html",
-        result=result,
-        available_models=available_models,
-        show_all=show_all,
-        total_models_count=len(models_suite)
-    )
+            result = analyze_url(input_url, selected_model)
+    return render_template("index.html", result=result, available_models=available_models)
 
 @app.route("/api/check", methods=["POST"])
 def api_check():
     data = request.get_json(silent=True) or {}
     url = data.get("url") or request.form.get("url")
-    show_all = bool(data.get("show_all") or request.form.get("show_all"))
-    visible_suite = get_visible_models(include_hidden=show_all)
-    default_label = f"Ensemble ({len(visible_suite)} Models)"
-    model_choice = data.get("model") or default_label
-
+    model_choice = data.get("model") or "Ensemble (All Models)"
     if not url:
         return jsonify({"error": "Missing 'url' parameter"}), 400
 
-    analysis = analyze_url(url, model_choice, include_hidden=show_all)
+    analysis = analyze_url(url, model_choice)
     return jsonify({
         "status": "success",
         "data": analysis
