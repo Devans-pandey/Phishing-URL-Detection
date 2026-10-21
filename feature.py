@@ -11,7 +11,7 @@ import ipaddress
 from urllib.parse import urlparse
 import requests
 from bs4 import BeautifulSoup
-import pandas as pd
+import numpy as np
 
 # Load precomputed TLD legitimate probability map
 TLD_MAP = {}
@@ -343,7 +343,8 @@ class FeatureExtraction:
         return data
 
     def getFeaturesDataFrame(self):
-        return pd.DataFrame([self.features])
+        """Return features as a 2D numpy array (row vector) — no pandas needed at runtime."""
+        return np.array([list(self.features.values())])
 
     def getFeaturesList(self):
         return list(self.features.values())

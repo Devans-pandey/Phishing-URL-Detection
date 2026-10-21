@@ -1,0 +1,19 @@
+# Training files - not needed at runtime
+train_suite.py
+train.py
+test_eval.py
+PhiUSIIL_Phishing_URL_Dataset.csv
+*.csv
+
+# Notebooks
+*.ipynb
+
+# Dev/env
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+*.log
