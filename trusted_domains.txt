@@ -1,0 +1,196 @@
+# =============================================================================
+# TRUSTED DOMAINS LIST
+# =============================================================================
+# These domains are always marked as SAFE, bypassing model inference.
+# The models produce false positives on heavy SPAs (lots of JS/images) which
+# is common on legitimate fintech and modern web apps.
+#
+# FORMAT:
+#   - One domain per line (bare domain, no https://)
+#   - Lines starting with # are comments
+#   - Subdomains are automatically covered (e.g. "phonepe.com" also covers
+#     "www.phonepe.com", "api.phonepe.com", etc.)
+#   - Blank lines are ignored
+# =============================================================================
+
+# ── Global Search & Productivity ─────────────────────────────────────────────
+google.com
+google.co.in
+gmail.com
+youtube.com
+drive.google.com
+docs.google.com
+meet.google.com
+calendar.google.com
+
+# ── Microsoft ─────────────────────────────────────────────────────────────────
+microsoft.com
+outlook.com
+office.com
+live.com
+hotmail.com
+onedrive.live.com
+teams.microsoft.com
+
+# ── Developer Platforms ───────────────────────────────────────────────────────
+github.com
+gitlab.com
+stackoverflow.com
+bitbucket.org
+npmjs.com
+pypi.org
+developer.android.com
+developer.apple.com
+
+# ── Social Media ──────────────────────────────────────────────────────────────
+facebook.com
+instagram.com
+twitter.com
+x.com
+linkedin.com
+reddit.com
+pinterest.com
+snapchat.com
+whatsapp.com
+telegram.org
+discord.com
+
+# ── E-Commerce (Global) ───────────────────────────────────────────────────────
+amazon.com
+amazon.in
+ebay.com
+alibaba.com
+apple.com
+walmart.com
+
+# ── E-Commerce (India) ────────────────────────────────────────────────────────
+flipkart.com
+myntra.com
+meesho.com
+snapdeal.com
+ajio.com
+nykaa.com
+bigbasket.com
+blinkit.com
+zepto.co.in
+swiggy.com
+zomato.com
+jiomart.com
+
+# ── Payments & Fintech (India) ────────────────────────────────────────────────
+phonepe.com
+paytm.com
+razorpay.com
+billdesk.com
+ccavenue.com
+instamojo.com
+cashfree.com
+juspay.in
+easebuzz.in
+payumoney.com
+freecharge.in
+mobikwik.com
+bharatpe.com
+googlepay.com
+airtel.in
+
+# ── Banks (India) ─────────────────────────────────────────────────────────────
+sbi.co.in
+onlinesbi.sbi
+hdfcbank.com
+icicibank.com
+axisbank.com
+kotak.com
+yesbank.in
+bankofbaroda.in
+pnbindia.in
+canarabank.in
+unionbankofindia.co.in
+indusind.com
+idfcfirstbank.com
+federalbank.co.in
+rblbank.com
+
+# ── Government & Regulatory (India) ──────────────────────────────────────────
+npci.org.in
+rbi.org.in
+sebi.gov.in
+incometax.gov.in
+uidai.gov.in
+gov.in
+nic.in
+mca.gov.in
+epfindia.gov.in
+india.gov.in
+digitalindia.gov.in
+digilocker.gov.in
+cowin.gov.in
+irctc.co.in
+gstn.org.in
+
+# ── Investment & Stock (India) ────────────────────────────────────────────────
+zerodha.com
+groww.in
+upstox.com
+angelone.in
+5paisa.com
+icicidirect.com
+hdfcsec.com
+sharekhan.com
+motilaloswalbse.com
+nseindia.com
+bseindia.com
+moneycontrol.com
+economictimes.com
+
+# ── Insurance (India) ─────────────────────────────────────────────────────────
+policybazaar.com
+coverfox.com
+acko.com
+lic.gov.in
+licindia.in
+
+# ── Telecom (India) ───────────────────────────────────────────────────────────
+jio.com
+airtel.in
+vi.in
+bsnl.co.in
+idea.in
+
+# ── Streaming & Entertainment ─────────────────────────────────────────────────
+netflix.com
+hotstar.com
+primevideo.com
+spotify.com
+jiocinema.com
+sonyliv.com
+zee5.com
+mxplayer.in
+
+# ── Cloud & Infrastructure ────────────────────────────────────────────────────
+aws.amazon.com
+cloud.google.com
+azure.microsoft.com
+vercel.com
+netlify.com
+heroku.com
+cloudflare.com
+digitalocean.com
+
+# ── News (India) ──────────────────────────────────────────────────────────────
+ndtv.com
+timesofindia.com
+hindustantimes.com
+thehindu.com
+indianexpress.com
+livemint.com
+business-standard.com
+
+# ── Education ─────────────────────────────────────────────────────────────────
+wikipedia.org
+khanacademy.org
+coursera.org
+udemy.com
+edx.org
+nptel.ac.in
+swayam.gov.in
