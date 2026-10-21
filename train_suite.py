@@ -1,7 +1,7 @@
 """
 Multi-Model Training Script for PhiUSIIL Phishing URL Detection
 Trains and exports 6 models for comparative evaluation and ensemble predictions:
-  Logistic Regression, Gradient Boosting, Decision Tree, SVM, HistGradientBoosting, Random Forest
+  Logistic Regression, XGBoost, Decision Tree, SVM, HistGradientBoosting, Random Forest
 """
 
 import os
@@ -10,12 +10,13 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
-from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import accuracy_score
+from xgboost import XGBClassifier
 
 DATASET_PATH = "PhiUSIIL_Phishing_URL_Dataset.csv"
 PICKLE_DIR = "pickle"
@@ -32,7 +33,7 @@ def train_suite():
 
     models = {
         'Logistic Regression':    make_pipeline(StandardScaler(), LogisticRegression(max_iter=500, solver='liblinear', class_weight='balanced')),
-        'Gradient Boosting':      GradientBoostingClassifier(n_estimators=100, max_depth=4, learning_rate=0.1, random_state=42),
+        'XGBoost':                XGBClassifier(n_estimators=50, max_depth=6, learning_rate=0.1, random_state=42, eval_metric='logloss'),
         'Decision Tree':          DecisionTreeClassifier(max_depth=10, random_state=42),
         'SVM':                    CalibratedClassifierCV(LinearSVC(dual='auto', max_iter=2000, random_state=42)),
         'HistGradientBoosting':   HistGradientBoostingClassifier(max_iter=100, random_state=42),
@@ -56,9 +57,9 @@ def train_suite():
     with open(suite_path, "wb") as f:
         pickle.dump(trained_suite, f)
 
-    # Export HistGradientBoosting as primary fallback model.pkl
+    # Export XGBoost as primary fallback model.pkl
     with open(os.path.join(PICKLE_DIR, "model.pkl"), "wb") as f:
-        pickle.dump(trained_suite['HistGradientBoosting']['model'], f)
+        pickle.dump(trained_suite['XGBoost']['model'], f)
 
     print(f"\nSuccessfully exported model suite to {suite_path}")
 
